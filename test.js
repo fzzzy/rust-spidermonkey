@@ -1,9 +1,9 @@
 
 print("Hello, world!");
 
-document._setMutationHandler(function(mut) {
-    print(JSON.stringify(mut));
-});
+//document._setMutationHandler(function(mut) {
+//    print(JSON.stringify(mut));
+//});
 
 // The network layer sometimes deadlocks; disable for now
 //window.location = "http://127.0.0.1/";

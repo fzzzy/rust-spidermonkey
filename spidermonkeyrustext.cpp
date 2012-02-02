@@ -179,12 +179,12 @@ void jsrust_report_error(JSContext *cx, const char *c_message,
         reinterpret_cast<jsrust_context_priv *>(priv_p);
 
     rust_str *message = rust_str::make(c_message);
-    rust_str *filename = rust_str::make(c_report->filename);
-    jsrust_error_report report =
-        { message, filename, c_report->lineno, c_report->flags };
+    //rust_str *filename = rust_str::make(c_report->filename);
+    //jsrust_error_report report =
+    //    { message, filename, c_report->lineno, c_report->flags };
 
-    chan_id_send(priv->error_tydesc, priv->error_chan.task,
-                 priv->error_chan.port, &report);
+    //chan_id_send(priv->error_tydesc, priv->error_chan.task,
+    //             priv->error_chan.port, &report);
 
     jsrust_log_message log_report =
         { message, 1, 0 };
@@ -243,7 +243,7 @@ extern "C" JSBool JSRust_InitRustLibrary(JSContext *cx, JSObject *global) {
         jsrust_new_port,
         0, // 0 args
         NULL, // no properties
-        port_functions, // no functions
+        port_functions,
         NULL, NULL);
 
     JS_DefineFunctions(cx, global, global_functions);
@@ -439,6 +439,7 @@ extern "C" JSBool JSRust_SetLogChannel(JSContext *cx,
 
     JS_DefineFunctions(cx, global, postMessage_functions);
     JS_DefineFunctions(cx, global, io_functions);
+    JS_SetErrorReporter(cx, jsrust_report_error);
 
     return JS_TRUE;
 }

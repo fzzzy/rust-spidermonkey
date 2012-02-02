@@ -19,6 +19,7 @@ enum child_message {
     spawn(str, str),
     cast(str, str),
     load_url(str),
+    load_script(str),
     exitproc,
     done,
 }
@@ -34,39 +35,6 @@ enum ioop {
     op_close = 7,
     op_time = 8,
     op_exit = 9
-}
-
-fn populate_global_scope(cx : js::context, global : js::object, script : str) {
-    js::begin_request(*cx);
-    alt std::io::read_whole_file("xmlhttprequest.js") {
-        result::ok(file) {
-            let script = js::compile_script(
-                cx, global, file, "xmlhttprequest.js", 0u);
-            js::execute_script(cx, global, script);
-        }
-        _ { fail }
-    }
-    alt std::io::read_whole_file("dom.js") {
-        result::ok(file) {
-            let script = js::compile_script(
-                cx, global, file, "dom.js", 0u);
-            js::execute_script(cx, global, script);
-        }
-        _ { fail }
-    }
-
-    alt std::io::read_whole_file_str(script) {
-        result::ok(file) {
-            let script = js::compile_script(
-                cx, global, str::bytes(#fmt("try { %s } catch (e) { print('Error: ', e, e.stack) }", file)), script, 0u);
-            js::execute_script(cx, global, script);
-        }
-        _ {
-            log(core::error, #fmt("File not found: %s", script));
-            js::ext::rust_exit_now(0);
-        }
-    }
-    js::end_request(*cx);
 }
 
 fn make_children(msg_chan : chan<child_message>, senduv_chan: chan<chan<uvtmp::iomsg>>) {
@@ -166,6 +134,22 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                     js::execute_script(cx, global, script);
                     js::end_request(*cx);
                 }
+                load_script(script) {
+                    alt std::io::read_whole_file(script) {
+                        result::ok(file) {
+                            let script = js::compile_script(
+                                cx, global, file, script, 0u);
+                            js::execute_script(cx, global, script);
+                            let checkwait = js::compile_script(
+                            cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0)  jsrust_exit();"), "io", 0u);
+                            js::execute_script(cx, global, checkwait);
+                        }
+                        _ {
+                            log(core::error, #fmt("File not found: %s", script));
+                            js::ext::rust_exit_now(0);
+                        }
+                    }
+                }
                 log_msg(m) {                
                     // messages from javascript
                     alt m.level{
@@ -213,9 +197,10 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                     }
                 }
                 io_cb(a1, a2, a3) {
+                    log(core::error, "io_cb");
                     js::begin_request(*cx);
                     js::set_data_property(cx, global, a2);
-                    let code = #fmt("_resume(%u, _data, %u); _data = undefined; XMLHttpRequest.requests_outstanding", a1 as uint, a3 as uint);
+                    let code = #fmt("_resume(%u, _data, %u); _data = undefined;", a1 as uint, a3 as uint);
                     let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
                     js::execute_script(cx, global, script);
                     js::end_request(*cx);
@@ -231,15 +216,19 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
             }
             if setup == 1 {
                 setup = 2;
+                alt std::io::read_whole_file("xmlhttprequest.js") {
+                    result::ok(file) {
+                        let script = js::compile_script(
+                            cx, global, file, "xmlhttprequest.js", 0u);
+                        js::execute_script(cx, global, script);
+                    }
+                    _ { fail }
+                }
                 if str::byte_len(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
-                    populate_global_scope(cx, global, "");
                     send(msg_chan, load_url(myurl));
                 } else {
-                    populate_global_scope(cx, global, myurl);
+                    send(msg_chan, load_script(myurl));
                 }
-                let checkwait = js::compile_script(
-                    cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0)  jsrust_exit();"), "test.js", 0u);
-                js::execute_script(cx, global, checkwait);
             }
         }
     };

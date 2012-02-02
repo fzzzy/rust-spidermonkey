@@ -209,7 +209,6 @@ global._resume = function _resume(what, data, req_id) {
         // piggyback on this
         XMLHttpRequest.requests_outstanding--;
     } else if (what === URL) {
-        print("LOAD URL", data);
         window.location = data;
     } else if (what === CLOSE) {
         this._fd = undefined;
