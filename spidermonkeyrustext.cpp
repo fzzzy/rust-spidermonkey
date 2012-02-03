@@ -92,28 +92,13 @@ extern "C" JSFinalizeOp JSRust_GetFinalizeStub() {
 namespace {
 
 struct jsrust_context_priv {
-    const type_desc *error_tydesc;
-    rust_chan_pkg error_chan;
+    const type_desc *msg_tydesc;
+    rust_chan_pkg msg_chan;
 
-    const type_desc *log_tydesc;
-    rust_chan_pkg log_chan;
-
-    const type_desc *io_tydesc;
-    rust_chan_pkg io_chan;
-
-    JSObject *set_timeout_cbs;
-
-    jsrust_context_priv() : error_tydesc(NULL), error_chan(), log_tydesc(NULL), log_chan(), io_tydesc(NULL), io_chan(), set_timeout_cbs(NULL) {}
+    jsrust_context_priv() : msg_tydesc(NULL), msg_chan() {}
 };
 
-struct jsrust_error_report {
-    rust_str *message;
-    rust_str *filename;
-    uint32_t lineno;
-    uint32_t flags;
-};
-
-struct jsrust_log_message {
+struct jsrust_message {
     rust_str *message;
     uint32_t level;
     uint32_t tag;
@@ -179,18 +164,12 @@ void jsrust_report_error(JSContext *cx, const char *c_message,
         reinterpret_cast<jsrust_context_priv *>(priv_p);
 
     rust_str *message = rust_str::make(c_message);
-    //rust_str *filename = rust_str::make(c_report->filename);
-    //jsrust_error_report report =
-    //    { message, filename, c_report->lineno, c_report->flags };
 
-    //chan_id_send(priv->error_tydesc, priv->error_chan.task,
-    //             priv->error_chan.port, &report);
-
-    jsrust_log_message log_report =
+    jsrust_message report =
         { message, 1, 0 };
 
-    chan_id_send(priv->log_tydesc, priv->log_chan.task,
-                 priv->log_chan.port, &log_report);
+    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
+                 priv->msg_chan.port, &report);
 
 }
 
@@ -251,21 +230,6 @@ extern "C" JSBool JSRust_InitRustLibrary(JSContext *cx, JSObject *global) {
     return !!result;
 }
 
-extern "C" JSBool JSRust_SetErrorChannel(JSContext *cx,
-                                         const rust_chan_pkg *channel,
-                                         const type_desc *tydesc) {
-    void *priv_p = JS_GetContextPrivate(cx);
-    assert(priv_p && "No private data associated with context!");
-    jsrust_context_priv *priv =
-        reinterpret_cast<jsrust_context_priv *>(priv_p);
-
-    priv->error_tydesc = tydesc;
-    priv->error_chan = *channel;
-
-    JS_SetErrorReporter(cx, jsrust_report_error);
-    return JS_TRUE;
-}
-
 JSBool JSRust_PostMessage(JSContext *cx, uintN argc, jsval *vp) {
     void *priv_p = JS_GetContextPrivate(cx);
     assert(priv_p && "No private data associated with context!");
@@ -280,10 +244,10 @@ JSBool JSRust_PostMessage(JSContext *cx, uintN argc, jsval *vp) {
     JS_ConvertArguments(cx,
         1, JS_ARGV(cx, vp), "u", &what);
 
-    jsrust_log_message report = { message, what, 0 };
+    jsrust_message report = { message, what, 0 };
 
-    chan_id_send(priv->log_tydesc, priv->log_chan.task,
-                 priv->log_chan.port, &report);
+    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
+                 priv->msg_chan.port, &report);
 
     JS_SET_RVAL(cx, vp, JSVAL_NULL);
     return JS_TRUE;
@@ -320,10 +284,10 @@ uint32_t jsrust_send_msg(JSContext *cx, enum IO_OP op, rust_str *data, uint32_t 
         my_num = io_op_num++;
     }
 
-    jsrust_log_message evt = { data, op, my_num, timeout };
+    jsrust_message evt = { data, op, my_num, timeout };
 
-    chan_id_send(priv->log_tydesc, priv->log_chan.task,
-                 priv->log_chan.port, &evt);
+    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
+                 priv->msg_chan.port, &evt);
 
     return my_num;
 }
@@ -425,7 +389,7 @@ static JSFunctionSpec io_functions[] = {
     JS_FS_END
 };
 
-extern "C" JSBool JSRust_SetLogChannel(JSContext *cx,
+extern "C" JSBool JSRust_SetMessageChannel(JSContext *cx,
                                          JSObject *global,
                                          const rust_chan_pkg *channel,
                                          const type_desc *tydesc) {
@@ -434,8 +398,8 @@ extern "C" JSBool JSRust_SetLogChannel(JSContext *cx,
     jsrust_context_priv *priv =
         reinterpret_cast<jsrust_context_priv *>(priv_p);
 
-    priv->log_tydesc = tydesc;
-    priv->log_chan = *channel;
+    priv->msg_tydesc = tydesc;
+    priv->msg_chan = *channel;
 
     JS_DefineFunctions(cx, global, postMessage_functions);
     JS_DefineFunctions(cx, global, io_functions);

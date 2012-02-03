@@ -9,10 +9,8 @@ use std;
 import std::{ io, os, treemap, uvtmp };
 
 enum child_message {
-    set_log(chan<js::log_message>),
-    set_err(chan<js::error_report>),
-    log_msg(js::log_message),
-    err_msg(js::error_report),
+    set_msg(chan<js::jsrust_message>),
+    got_msg(js::jsrust_message),
     io_cb(u32, str, u32),
     stdout(str),
     stderr(str),
@@ -39,16 +37,16 @@ enum ioop {
 
 fn make_children(msg_chan : chan<child_message>, senduv_chan: chan<chan<uvtmp::iomsg>>) {
     task::spawn {||
-        let log_port = port::<js::log_message>();
-        send(msg_chan, set_log(chan(log_port)));
+        let js_port = port::<js::jsrust_message>();
+        send(msg_chan, set_msg(chan(js_port)));
 
         while true {
-            let msg = recv(log_port);
+            let msg = recv(js_port);
             if msg.level == 9u32 {
                 send(msg_chan, exitproc);
                 break;
             } else {
-                send(msg_chan, log_msg(msg));
+                send(msg_chan, got_msg(msg));
             }
         }
     };
@@ -121,8 +119,8 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
         while !exit {
             let msg = recv(msg_port);
             alt msg {
-                set_log(ch) {
-                    js::ext::set_log_channel(
+                set_msg(ch) {
+                    js::ext::set_msg_channel(
                         cx, global, ch);
                     setup += 1;
                 }
@@ -150,7 +148,7 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                         }
                     }
                 }
-                log_msg(m) {                
+                got_msg(m) {                
                     // messages from javascript
                     alt m.level{
                         0u32 { // stdout

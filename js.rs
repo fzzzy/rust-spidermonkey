@@ -9,7 +9,7 @@ export new_runtime, get_thread_runtime, runtime, new_context, context, begin_req
 export new_compartment_and_global_object, object, init_standard_classes, options;
 export null_principals, compile_script, execute_script, value_to_source;
 export get_string_bytes, get_string, get_int, set_data_property, ext;
-export error_report, log_message;
+export error_report, jsrust_message;
 
 /* Structures. */
 type JSClass = {
@@ -50,7 +50,7 @@ type error_report = {
 	flags: u32
 };
 
-type log_message = {
+type jsrust_message = {
 	message: str,
 	level: u32,
         tag: u32,
@@ -272,9 +272,7 @@ native mod jsrust {
 	/* Additional features. */
     fn JSRust_NewContext(rt : *JSRuntime, stackChunkSize : size_t)
         -> *JSContext;
-	fn JSRust_SetErrorChannel(cx : *JSContext, chan : chan<error_report>)
-		-> bool;
-	fn JSRust_SetLogChannel(cx : *JSContext, object : *JSObject, chan : chan<log_message>)
+	fn JSRust_SetMessageChannel(cx : *JSContext, object : *JSObject, chan : chan<jsrust_message>)
 		-> bool;
 	fn JSRust_InitRustLibrary(cx : *JSContext, object : *JSObject) -> bool;
         fn JSRust_SetDataOnObject(cx : *JSContext, object : *JSObject, val : str::sbuf, vallen: u32);
@@ -488,12 +486,8 @@ fn set_data_property(cx : context, obj : object, value : str) {
 
 /** Rust extensions to the JavaScript language bindings. */
 mod ext {
-	fn set_error_channel(cx : context, chan : chan<error_report>) {
-		if !jsrust::JSRust_SetErrorChannel(*cx, chan) { fail; }
-	}
-
-	fn set_log_channel(cx : context, object : object, chan : chan<log_message>) {
-		if !jsrust::JSRust_SetLogChannel(*cx, *object, chan) { fail; }
+	fn set_msg_channel(cx : context, object : object, chan : chan<jsrust_message>) {
+		if !jsrust::JSRust_SetMessageChannel(*cx, *object, chan) { fail; }
 	}
 
 	fn init_rust_library(cx : context, object : object) {
