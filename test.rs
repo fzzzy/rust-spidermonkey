@@ -92,144 +92,150 @@ fn make_children(msg_chan : chan<child_message>, senduv_chan: chan<chan<uvtmp::i
 
 fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, out : chan<child_message>, sendchan : chan<(int, chan<child_message>)>) {
 
-    task::spawn {||
-        let rt = js::get_thread_runtime(maxbytes);
-        let msg_port = port::<child_message>();
-        let msg_chan = chan(msg_port);
-        send(sendchan, (myid, msg_chan));
-        let senduv_port = port::<chan<uvtmp::iomsg>>();
-        make_children(chan(msg_port), chan(senduv_port));
-        let uv_chan = recv(senduv_port);
+    let rt = js::get_thread_runtime(maxbytes);
+    let msg_port = port::<child_message>();
+    let msg_chan = chan(msg_port);
+    send(sendchan, (myid, msg_chan));
+    let senduv_port = port::<chan<uvtmp::iomsg>>();
+    make_children(chan(msg_port), chan(senduv_port));
+    let uv_chan = recv(senduv_port);
 
-        let cx = js::new_context(rt, maxbytes as size_t);
-        js::set_options(cx, js::options::varobjfix | js::options::methodjit);
-        js::set_version(cx, 185u);
+    let cx = js::new_context(rt, maxbytes as size_t);
+    js::set_options(cx, js::options::varobjfix | js::options::methodjit);
+    js::set_version(cx, 185u);
 
-        let clas = js::new_class({ name: "global", flags: 0x47700u32 });
-        let global = js::new_compartment_and_global_object(
-            cx, clas, js::null_principals());
+    let clas = js::new_class({ name: "global", flags: js::ext::get_global_class_flags() });
+    let global = js::new_compartment_and_global_object(
+        cx, clas, js::null_principals());
 
-        js::init_standard_classes(cx, global);
-        js::ext::init_rust_library(cx, global);
+    js::init_standard_classes(cx, global);
+    js::ext::init_rust_library(cx, global);
 
-        let exit = false;
-        let setup = 0;
-        let childid = 0;
+    let exit = false;
+    let setup = 0;
+    let childid = 0;
 
-        while !exit {
-            let msg = recv(msg_port);
-            alt msg {
-                set_msg(ch) {
-                    js::ext::set_msg_channel(
-                        cx, global, ch);
-                    setup += 1;
-                }
-                load_url(x) {
-                    js::begin_request(*cx);
-                    js::set_data_property(cx, global, x);
-                    let code = "_resume(5, _data, 0); _data = undefined";
-                    let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
-                    js::execute_script(cx, global, script);
-                    js::end_request(*cx);
-                }
-                load_script(script) {
-                    alt std::io::read_whole_file(script) {
-                        result::ok(file) {
-                            let script = js::compile_script(
-                                cx, global, file, script, 0u);
-                            js::execute_script(cx, global, script);
-                            let checkwait = js::compile_script(
-                            cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0)  jsrust_exit();"), "io", 0u);
-                            js::execute_script(cx, global, checkwait);
-                        }
-                        _ {
-                            log(core::error, #fmt("File not found: %s", script));
-                            js::ext::rust_exit_now(0);
-                        }
-                    }
-                }
-                got_msg(m) {                
-                    // messages from javascript
-                    alt m.level{
-                        0u32 { // stdout
-                        send(out, stdout(
-                            #fmt("[Actor %d] %s",
-                            myid, m.message)));
-                        }
-                        1u32 { // stderr
-                            send(out, stderr(
-                                #fmt("[ERROR %d] %s",
-                                myid, m.message)));
-                        }
-                        2u32 { // spawn
-                            send(out, spawn(
-                                #fmt("%d:%d", myid, childid),
-                                m.message));
-                            childid = childid + 1;
-                        }
-                        3u32 { // cast
-                        }
-                        4u32 { // CONNECT
-                            uvtmp::connect(
-                                thread, m.tag, m.message, uv_chan);
-                        }
-                        5u32 { // SEND
-                            uvtmp::write(
-                                thread, m.tag,
-                                str::bytes("GET / HTTP/1.0\n\n"),
-                                uv_chan);
-                        }
-                        6u32 { // RECV
-                            uvtmp::read_start(thread, m.tag, uv_chan);
-                        }
-                        7u32 { // CLOSE
-                            //log(core::error, "close");
-                            uvtmp::close_connection(thread, m.tag);
-                        }
-                        8u32 { // SETTIMEOUT
-                            uvtmp::timer_start(thread, m.timeout, m.tag, uv_chan);
-                        }
-                        _ {
-                            log(core::error, "...");
-                        }
-                    }
-                }
-                io_cb(a1, a2, a3) {
-                    log(core::error, "io_cb");
-                    js::begin_request(*cx);
-                    js::set_data_property(cx, global, a2);
-                    let code = #fmt("_resume(%u, _data, %u); _data = undefined;", a1 as uint, a3 as uint);
-                    let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
-                    js::execute_script(cx, global, script);
-                    js::end_request(*cx);
-                }
-                exitproc {
-                    send(uv_chan, uvtmp::exit);
-                }
-                done {
-                    exit = true;
-                    send(out, done);
-                }
-                _ { fail "unexpected case" }
+    while !exit {
+        let msg = recv(msg_port);
+        alt msg {
+            set_msg(ch) {
+                js::ext::set_msg_channel(
+                    cx, global, ch);
+                setup += 1;
             }
-            if setup == 1 {
-                setup = 2;
-                alt std::io::read_whole_file("xmlhttprequest.js") {
+            load_url(x) {
+                js::begin_request(*cx);
+                js::set_data_property(cx, global, x);
+                let code = "_resume(5, _data, 0); _data = undefined";
+                let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
+                js::execute_script(cx, global, script);
+                js::end_request(*cx);
+            }
+            load_script(script) {
+                alt std::io::read_whole_file(script) {
                     result::ok(file) {
                         let script = js::compile_script(
-                            cx, global, file, "xmlhttprequest.js", 0u);
+                            cx, global, file, script, 0u);
                         js::execute_script(cx, global, script);
+                        let checkwait = js::compile_script(
+                        cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0)  jsrust_exit();"), "io", 0u);
+                        js::execute_script(cx, global, checkwait);
                     }
-                    _ { fail }
-                }
-                if str::byte_len(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
-                    send(msg_chan, load_url(myurl));
-                } else {
-                    send(msg_chan, load_script(myurl));
+                    _ {
+                        log(core::error, #fmt("File not found: %s", script));
+                        js::ext::rust_exit_now(0);
+                    }
                 }
             }
+            got_msg(m) {                
+                // messages from javascript
+                alt m.level{
+                    0u32 { // stdout
+                    send(out, stdout(
+                        #fmt("[Actor %d] %s",
+                        myid, m.message)));
+                    }
+                    1u32 { // stderr
+                        send(out, stderr(
+                            #fmt("[ERROR %d] %s",
+                            myid, m.message)));
+                    }
+                    2u32 { // spawn
+                        send(out, spawn(
+                            #fmt("%d:%d", myid, childid),
+                            m.message));
+                        childid = childid + 1;
+                    }
+                    3u32 { // cast
+                    }
+                    4u32 { // CONNECT
+                        uvtmp::connect(
+                            thread, m.tag, m.message, uv_chan);
+                    }
+                    5u32 { // SEND
+                        uvtmp::write(
+                            thread, m.tag,
+                            str::bytes("GET / HTTP/1.0\n\n"),
+                            uv_chan);
+                    }
+                    6u32 { // RECV
+                        uvtmp::read_start(thread, m.tag, uv_chan);
+                    }
+                    7u32 { // CLOSE
+                        //log(core::error, "close");
+                        uvtmp::close_connection(thread, m.tag);
+                    }
+                    8u32 { // SETTIMEOUT
+                        uvtmp::timer_start(thread, m.timeout, m.tag, uv_chan);
+                    }
+                    _ {
+                        log(core::error, "...");
+                    }
+                }
+            }
+            io_cb(a1, a2, a3) {
+                log(core::error, "io_cb");
+                js::begin_request(*cx);
+                js::set_data_property(cx, global, a2);
+                let code = #fmt("_resume(%u, _data, %u); _data = undefined;", a1 as uint, a3 as uint);
+                let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
+                js::execute_script(cx, global, script);
+                js::end_request(*cx);
+            }
+            exitproc {
+                send(uv_chan, uvtmp::exit);
+            }
+            done {
+                exit = true;
+                send(out, done);
+            }
+            _ { fail "unexpected case" }
         }
-    };
+        if setup == 1 {
+            setup = 2;
+            alt std::io::read_whole_file("xmlhttprequest.js") {
+                result::ok(file) {
+                    let script = js::compile_script(
+                        cx, global, file, "xmlhttprequest.js", 0u);
+                    js::execute_script(cx, global, script);
+                }
+                _ { fail }
+            }
+            alt std::io::read_whole_file("dom.js") {
+                result::ok(file) {
+                    let script = js::compile_script(
+                        cx, global, file, "dom.js", 0u);
+                    js::execute_script(cx, global, script);
+                }
+                _ { fail }
+            }
+            if str::byte_len(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
+                send(msg_chan, load_url(myurl));
+            } else {
+                send(msg_chan, load_script(myurl));
+            }
+        }
+    }
 }
 
 
@@ -257,7 +263,9 @@ fn main(args : [str]) {
 
     for x in argv {
         left += 1;
-        make_actor(left, x, thread, maxbytes, stdoutchan, sendchanchan);
+        task::spawn {||
+            make_actor(left, x, thread, maxbytes, stdoutchan, sendchanchan);
+        };
     }
     let actorid = left;
 

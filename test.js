@@ -1,6 +1,6 @@
 
 print("Hello, world!");
-
+print(document);
 //document._setMutationHandler(function(mut) {
 //    print(JSON.stringify(mut));
 //});
@@ -10,5 +10,8 @@ print("Hello, world!");
 
 postMessage(0, [12,34,"Hello!"]);
 
-setTimeout(function() {print("timeout!!!")}, 500);
+setTimeout(function() {print("timeout1")}, 100);
+setTimeout(function() {print("timeout2")}, 200);
+setTimeout(function() {print("timeout3")}, 300);
+setTimeout(function() {print("timeout4!!!")}, 400);
 

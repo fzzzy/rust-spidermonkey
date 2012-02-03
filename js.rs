@@ -279,6 +279,7 @@ native mod jsrust {
 
         fn JSRust_GetThreadRuntime(maxbytes : u32) -> *JSRuntime;
         fn JSRust_Exit(code : c_int);
+        fn JSRust_GetGlobalClassFlags() -> u32;
 }
 
 resource runtime(_rt : *JSRuntime) {
@@ -493,6 +494,10 @@ mod ext {
 	fn init_rust_library(cx : context, object : object) {
 		if !jsrust::JSRust_InitRustLibrary(*cx, *object) { fail; }
 	}
+        
+        fn get_global_class_flags() -> u32 {
+            ret jsrust::JSRust_GetGlobalClassFlags();
+        }
 
 	fn rust_exit_now(code : int) {
 		jsrust::JSRust_Exit(code as c_int);

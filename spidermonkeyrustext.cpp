@@ -424,16 +424,14 @@ static pthread_key_t thread_runtime_key;
 static int initialized = 0;
 
 JSRuntime *jsrust_getthreadruntime(uint32_t max_bytes) {
-    JSRuntime *rt;
     pthread_mutex_lock(&get_runtime_mutex);
-
     if (!initialized) {
         pthread_key_create(&thread_runtime_key, NULL);
         initialized = 1;
     }
     pthread_mutex_unlock(&get_runtime_mutex);
 
-    rt = (JSRuntime *)pthread_getspecific(thread_runtime_key);
+    JSRuntime *rt = (JSRuntime *)pthread_getspecific(thread_runtime_key);
     if (rt == NULL) {
         rt = JS_NewRuntime(max_bytes);
         pthread_setspecific(thread_runtime_key, (const void *)rt);
@@ -445,3 +443,6 @@ extern "C" JSRuntime *JSRust_GetThreadRuntime(uint32_t max_bytes) {
     return jsrust_getthreadruntime(max_bytes);
 }
 
+extern "C" uint32_t JSRust_GetGlobalClassFlags() {
+    return JSCLASS_GLOBAL_FLAGS;
+}
