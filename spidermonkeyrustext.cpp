@@ -99,10 +99,11 @@ struct jsrust_context_priv {
 };
 
 struct jsrust_message {
-    rust_str *message;
     uint32_t level;
+    rust_str *message;
     uint32_t tag;
     uint32_t timeout;
+    uint32_t pad;
 };
 
 
@@ -155,6 +156,40 @@ static JSFunctionSpec port_functions[] = {
     JS_FS_END
 };
 
+static uint32_t io_op_num = 1;
+
+enum IO_OP {
+    STDOUT,
+    STDERR,
+    SPAWN,
+    CAST,
+    CONNECT,
+    SEND,
+    RECV,
+    CLOSE,
+    TIME,
+    EXIT
+};
+
+uint32_t jsrust_send_msg(JSContext *cx, enum IO_OP op, rust_str *data, uint32_t req_id, uint32_t timeout) {
+    void *priv_p = JS_GetContextPrivate(cx);
+    assert(priv_p && "No private data associated with context!");
+    jsrust_context_priv *priv =
+        reinterpret_cast<jsrust_context_priv *>(priv_p);
+
+    uint32_t my_num = req_id;
+    if (!my_num) {
+        my_num = io_op_num++;
+    }
+
+    jsrust_message evt = { op, data, my_num, timeout, 0 };
+
+    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
+                 priv->msg_chan.port, &evt);
+
+    return my_num;
+}
+
 void jsrust_report_error(JSContext *cx, const char *c_message,
                          JSErrorReport *c_report)
 {
@@ -165,12 +200,7 @@ void jsrust_report_error(JSContext *cx, const char *c_message,
 
     rust_str *message = rust_str::make(c_message);
 
-    jsrust_message report =
-        { message, 1, 0 };
-
-    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
-                 priv->msg_chan.port, &report);
-
+    jsrust_send_msg(cx, STDERR, message, 0, 0);
 }
 
 }   /* end anonymous namespace */
@@ -244,10 +274,7 @@ JSBool JSRust_PostMessage(JSContext *cx, uintN argc, jsval *vp) {
     JS_ConvertArguments(cx,
         1, JS_ARGV(cx, vp), "u", &what);
 
-    jsrust_message report = { message, what, 0 };
-
-    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
-                 priv->msg_chan.port, &report);
+    jsrust_send_msg(cx, (enum IO_OP)what, message, 0, 0);
 
     JS_SET_RVAL(cx, vp, JSVAL_NULL);
     return JS_TRUE;
@@ -258,39 +285,6 @@ static JSFunctionSpec postMessage_functions[] = {
     JS_FS_END
 };
 
-static uint32_t io_op_num = 1;
-
-enum IO_OP {
-    STDOUT,
-    STDERR,
-    SPAWN,
-    CAST,
-    CONNECT,
-    SEND,
-    RECV,
-    CLOSE,
-    TIME,
-    EXIT
-};
-
-uint32_t jsrust_send_msg(JSContext *cx, enum IO_OP op, rust_str *data, uint32_t req_id, uint32_t timeout) {
-    void *priv_p = JS_GetContextPrivate(cx);
-    assert(priv_p && "No private data associated with context!");
-    jsrust_context_priv *priv =
-        reinterpret_cast<jsrust_context_priv *>(priv_p);
-
-    uint32_t my_num = req_id;
-    if (!my_num) {
-        my_num = io_op_num++;
-    }
-
-    jsrust_message evt = { data, op, my_num, timeout };
-
-    chan_id_send(priv->msg_tydesc, priv->msg_chan.task,
-                 priv->msg_chan.port, &evt);
-
-    return my_num;
-}
 
 JSBool JSRust_Connect(JSContext *cx, uintN argc, jsval *vp) {
     JSString *a2str;

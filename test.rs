@@ -11,7 +11,7 @@ import std::{ io, os, treemap, uvtmp };
 enum child_message {
     set_msg(chan<js::jsrust_message>),
     got_msg(js::jsrust_message),
-    io_cb(u32, str, u32),
+    io_cb(u32, u32, u32, u32, str),
     stdout(str),
     stderr(str),
     spawn(str, str),
@@ -58,25 +58,25 @@ fn make_children(msg_chan : chan<child_message>, senduv_chan: chan<chan<uvtmp::i
             let msg = recv(uv_port);
             alt msg {
                 uvtmp::connected(cd) {
-                    send(msg_chan, io_cb(0u32, "onconnect", uvtmp::get_req_id(cd)));
+                    send(msg_chan, io_cb(0u32, uvtmp::get_req_id(cd), 0u32, 0u32, "onconnect"));
                 }
                 uvtmp::wrote(cd) {
-                    send(msg_chan, io_cb(1u32, "onsend", uvtmp::get_req_id(cd)));
+                    send(msg_chan, io_cb(1u32, uvtmp::get_req_id(cd), 0u32, 0u32, "onsend"));
                 }
                 uvtmp::read(cd, buf, len) {
                     if len == -1 {
-                        send(msg_chan, io_cb(3u32, "onclose", uvtmp::get_req_id(cd)));
+                        send(msg_chan, io_cb(3u32, uvtmp::get_req_id(cd), 0u32, 0u32, "onclose"));
                     } else {
                         unsafe {
                             let vecbuf = vec::unsafe::from_buf(buf, len as uint);
                             let bufstr = str::from_bytes(vecbuf);
-                            send(msg_chan, io_cb(2u32, bufstr, uvtmp::get_req_id(cd)));
+                            send(msg_chan, io_cb(2u32, uvtmp::get_req_id(cd), 0u32, 0u32, bufstr));
                             uvtmp::delete_buf(buf);
                         }
                     }
                 }
                 uvtmp::timer(req_id) {
-                    send(msg_chan, io_cb(4u32, "ontimer", req_id));
+                    send(msg_chan, io_cb(4u32, req_id, 0u32, 0u32, "ontimer"));
                 }
                 uvtmp::whatever {
                 
@@ -124,18 +124,21 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                 setup += 1;
             }
             load_url(x) {
-                js::begin_request(*cx);
+                //log(core::error, ("LOAD URL", x));
+                //js::begin_request(*cx);
                 js::set_data_property(cx, global, x);
                 let code = "_resume(5, _data, 0); _data = undefined";
                 let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
                 js::execute_script(cx, global, script);
-                js::end_request(*cx);
+                //js::end_request(*cx);
             }
             load_script(script) {
                 alt std::io::read_whole_file(script) {
                     result::ok(file) {
                         let script = js::compile_script(
-                            cx, global, file, script, 0u);
+                            cx, global,
+							str::bytes(#fmt("try { %s } catch (e) { print(e + '\\n' + e.stack); }", str::from_bytes(file))),
+							script, 0u);
                         js::execute_script(cx, global, script);
                         let checkwait = js::compile_script(
                         cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0)  jsrust_exit();"), "io", 0u);
@@ -173,12 +176,14 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                             thread, m.tag, m.message, uv_chan);
                     }
                     5u32 { // SEND
+						//log(core::error, ("send", m.tag, m.message));
                         uvtmp::write(
                             thread, m.tag,
-                            str::bytes("GET / HTTP/1.0\n\n"),
+                            str::bytes(m.message),
                             uv_chan);
                     }
                     6u32 { // RECV
+						//log(core::error, ("recv", m.tag));
                         uvtmp::read_start(thread, m.tag, uv_chan);
                     }
                     7u32 { // CLOSE
@@ -186,6 +191,7 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                         uvtmp::close_connection(thread, m.tag);
                     }
                     8u32 { // SETTIMEOUT
+						//log(core::error, ("time", m.tag));
                         uvtmp::timer_start(thread, m.timeout, m.tag, uv_chan);
                     }
                     _ {
@@ -193,11 +199,11 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                     }
                 }
             }
-            io_cb(a1, a2, a3) {
-                log(core::error, "io_cb");
+            io_cb(level, tag, timeout, _p, buf) {
+                //log(core::error, ("io_cb", level, tag, timeout, buf));
                 js::begin_request(*cx);
-                js::set_data_property(cx, global, a2);
-                let code = #fmt("_resume(%u, _data, %u); _data = undefined;", a1 as uint, a3 as uint);
+                js::set_data_property(cx, global, buf);
+                let code = #fmt("try { _resume(%u, _data, %u); } catch (e) { print(e + '\\n' + e.stack); }; _data = undefined;", level as uint, tag as uint);
                 let script = js::compile_script(cx, global, str::bytes(code), "io", 0u);
                 js::execute_script(cx, global, script);
                 js::end_request(*cx);
@@ -229,7 +235,7 @@ fn make_actor(myid : int, myurl : str, thread : uvtmp::thread, maxbytes : u32, o
                 }
                 _ { fail }
             }
-            if str::byte_len(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
+            if str::len_bytes(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
                 send(msg_chan, load_url(myurl));
             } else {
                 send(msg_chan, load_script(myurl));

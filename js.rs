@@ -51,10 +51,11 @@ type error_report = {
 };
 
 type jsrust_message = {
-	message: str,
 	level: u32,
-        tag: u32,
-        timeout: u32
+	message: str,
+    tag: u32,
+    timeout: u32,
+	pad: u32
 };
 
 
@@ -481,7 +482,7 @@ fn get_int(cx : context, num : jsval) -> i32 unsafe {
 
 fn set_data_property(cx : context, obj : object, value : str) {
     ret str::as_buf(value) {|buf|
-        jsrust::JSRust_SetDataOnObject(*cx, *obj, buf, str::byte_len(value) as u32);
+        jsrust::JSRust_SetDataOnObject(*cx, *obj, buf, str::len_bytes(value) as u32);
     }
 }
 

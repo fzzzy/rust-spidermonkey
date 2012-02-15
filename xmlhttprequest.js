@@ -110,10 +110,13 @@ XMLHttpRequest.prototype = {
         if (data) {
             this._request += data;
         }
-        if (this._connected === true) {
-            jsrust_send(this._fd, this._request);
-            jsrust_recv(xhr._fd, 32768);
-        }
+		if (this.connected) {
+	        jsrust_send(this._fd, this._request);
+	        jsrust_recv(this._fd, 32768);
+			this._request = "";
+		} else {
+	        //jsrust_send(this._fd, "");
+		}
     },
     abort: function abort() {
         // TODO ???
@@ -132,25 +135,19 @@ XMLHttpRequest.prototype = {
 
 global._resume = function _resume(what, data, req_id) {
     //print("Handling request. Total:", XMLHttpRequest.requests_outstanding);
-    //print("_resume", what, data, req_id);
-    var xhr = _xhrs[req_id]
+    var xhr = _xhrs[req_id] || null;
     if (what === CONN) {
         xhr.readyState = XMLHttpRequest.prototype.OPENED;
         xhr.onreadystatechange.apply(xhr);
-        if (xhr._request) {
-            jsrust_send(xhr._fd, xhr._request);
-            jsrust_recv(xhr._fd, 32768);
-        } else {
-            xhr._connected = true;
-        }
-    } else if (what === SEND) {
-        // TODO need to get number of bytes actually written back into js
-        // to support writing large requests in chunks
-        xhr._request = ""; //xhr._request.substring(data[1]);
         if (xhr._request.length) {
             jsrust_send(xhr._fd, xhr._request);
-            jsrust_recv(xhr._fd, 32768);
         }
+		this.connected = true;
+    } else if (what === SEND) {
+        jsrust_recv(xhr._fd, 32768);
+        // TODO need to get number of bytes actually written back into js
+        // to support writing large requests in chunks
+        //xhr._request = ""; //xhr._request.substring(data[1]);
     } else if (what === RECV) {
         xhr._response += data;
 //                xhr.responseText += data[1];
@@ -198,7 +195,7 @@ global._resume = function _resume(what, data, req_id) {
             xhr.readyState = XMLHttpRequest.prototype.DONE;
             xhr.onreadystatechange.apply(xhr);
             delete _xhrs[xhr._id];
-            close(xhr._id);
+            //jsrust_close(xhr._id);
         } else {
             xhr.readyState = XMLHttpRequest.prototype.LOADING;
             xhr.onreadystatechange.apply(xhr);
