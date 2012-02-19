@@ -108,7 +108,7 @@ struct jsrust_message {
 
 
 void port_finalize(JSContext *cx, JSObject *obj) {
-    rust_port *port = reinterpret_cast<rust_port *>(JS_GetPrivate(cx, obj));
+    rust_port *port = reinterpret_cast<rust_port *>(JS_GetPrivate(obj));
     if (port)
         del_port(port);
 }
@@ -138,14 +138,14 @@ JSBool jsrust_new_port(JSContext *cx, uintN argc, jsval *vp) {
     }
 
     rust_port *port = new_port(sizeof(void *) * 2);
-    JS_SetPrivate(cx, obj, port);
+    JS_SetPrivate(obj, port);
     JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
     return JS_TRUE;
 }
 
 JSBool jsrust_port_channel(JSContext *cx, uintN argc, jsval *vp) {
     jsval self = JS_THIS(cx, vp);
-    rust_port *port = (rust_port *)JS_GetPrivate(cx, JSVAL_TO_OBJECT(self));
+    rust_port *port = (rust_port *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
     // todo make channel and return it
     JS_SET_RVAL(cx, vp, JSVAL_NULL);
     return JS_TRUE;
@@ -159,14 +159,14 @@ static JSFunctionSpec port_functions[] = {
 static uint32_t io_op_num = 1;
 
 enum IO_OP {
-    STDOUT,
-    STDERR,
-    SPAWN,
-    CAST,
     CONNECT,
     SEND,
     RECV,
     CLOSE,
+    STDOUT,
+    STDERR,
+    SPAWN,
+    CAST,
     TIME,
     EXIT
 };
@@ -222,7 +222,7 @@ static JSBool JSRust_Print(JSContext *cx, uintN argc, jsval *vp) {
     JSString *str;
     char *bytes;
 
-    printf("%p ", pthread_self());
+    printf("%p ", (void *)pthread_self());
 
     argv = JS_ARGV(cx, vp);
     for (i = 0; i < argc; i++) {

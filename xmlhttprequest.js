@@ -39,8 +39,12 @@ var CONN = 0;
 var SEND = 1;
 var RECV = 2;
 var CLOSE = 3;
-var TIME = 4;
-var URL = 5;
+var OUT = 4;
+var ERR = 5;
+var SPAWN = 6;
+var CAST = 7;
+var TIME = 8;
+var URL = 9;
 
 function XMLHttpRequest() {
     this.readyState = 0;

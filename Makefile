@@ -10,7 +10,7 @@ endif
 LIB=lib
 RUSTC?=rustc
 CXX=g++
-CXXFLAGS+=-g
+CXXFLAGS+=-g -fPIC
 LIBS=-lmozjs -lrustrt
 VERSION=0.1
 
