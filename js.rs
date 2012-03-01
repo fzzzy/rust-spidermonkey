@@ -417,7 +417,7 @@ fn init_standard_classes(cx : context, object : object) {
 fn compile_script(cx : context, object : object, src : [u8], filename : str,
                   lineno : uint) -> script unsafe {
     let jsscript = str::as_buf(filename, { |buf|
-        js::JS_CompileScript(*cx, *object, vec::to_ptr(src),
+        js::JS_CompileScript(*cx, *object, vec::unsafe::to_ptr(src),
                              vec::len(src) as size_t, buf, lineno as c_uint)
     });
     if jsscript == ptr::null() {
@@ -458,16 +458,16 @@ fn get_string(cx : context, jsstr : string) -> str unsafe {
 
     // Make a sizing call.
     let len = 0 as size_t;
-    if !js::JS_EncodeCharacters(*cx, vec::to_ptr(bytes),
+    if !js::JS_EncodeCharacters(*cx, vec::unsafe::to_ptr(bytes),
                                 (vec::len(bytes) / 2u) as size_t, ptr::null(),
                                 ptr::addr_of(len)) {
         fail;
     }
 
     let buf = vec::init_elt(0u, ((len as u8) + 1u8));
-    if !js::JS_EncodeCharacters(*cx, vec::to_ptr(bytes),
+    if !js::JS_EncodeCharacters(*cx, vec::unsafe::to_ptr(bytes),
                                 (vec::len(bytes) / 2u) as size_t,
-                                vec::to_ptr(buf), ptr::addr_of(len)) {
+                                vec::unsafe::to_ptr(buf), ptr::addr_of(len)) {
         fail;
     }
 
@@ -482,7 +482,7 @@ fn get_int(cx : context, num : jsval) -> i32 unsafe {
 
 fn set_data_property(cx : context, obj : object, value : str) {
     ret str::as_buf(value) {|buf|
-        jsrust::JSRust_SetDataOnObject(*cx, *obj, buf, str::len_bytes(value) as u32);
+        jsrust::JSRust_SetDataOnObject(*cx, *obj, buf, str::len(value) as u32);
     }
 }
 
