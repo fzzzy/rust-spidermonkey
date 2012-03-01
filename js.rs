@@ -5,9 +5,9 @@ import comm::chan;
 import ctypes::{ size_t, void, c_int, c_uint };
 import ptr::null;
 
-export new_runtime, get_thread_runtime, runtime, new_context, context, begin_request, end_request, set_options, set_version, new_class;
+export new_runtime, get_thread_runtime, runtime, new_context, context, begin_request, end_request, set_options, set_version, new_class, class;
 export new_compartment_and_global_object, object, init_standard_classes, options;
-export null_principals, compile_script, execute_script, value_to_source;
+export null_principals, compile_script, script, execute_script, value_to_source;
 export get_string_bytes, get_string, get_int, set_data_property, ext;
 export error_report, jsrust_message;
 
