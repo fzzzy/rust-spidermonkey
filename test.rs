@@ -29,13 +29,13 @@ fn make_context(maxbytes : u32) -> (js::context, js::object) {
     let rt = js::get_thread_runtime(maxbytes),
         cx = js::new_context(rt, maxbytes as size_t);
 
-    js::set_options(cx,
-    js::options::varobjfix | js::options::methodjit);
     js::set_version(cx, 185u);
+    js::set_options(cx,
+        js::options::varobjfix | js::options::methodjit);
 
     let globclass = js::new_class({
-    name: "global",
-    flags: js::ext::get_global_class_flags() });
+        name: "global",
+        flags: js::ext::get_global_class_flags() });
 
     let global = js::new_compartment_and_global_object(
         cx, globclass, js::null_principals());
@@ -102,10 +102,9 @@ fn on_js_msg(myid : int, out : chan<out_msg>, m : js::jsrust_message, childid : 
 }
 
 
-fn on_ctl_msg(myid : int, cx : js::context, global : js::object, msg : ctl_msg, checkwait : js::script, loadurl : js::script) {
+fn on_ctl_msg(cx : js::context, global : js::object, msg : ctl_msg, checkwait : js::script, loadurl : js::script) {
     alt msg {
         load_url(x) {
-            log(core::error, x);
             js::set_data_property(cx, global, x);
             js::execute_script(cx, global, loadurl);
         }
@@ -123,12 +122,11 @@ fn on_ctl_msg(myid : int, cx : js::context, global : js::object, msg : ctl_msg, 
                 }
                 _ {
                     log(core::error, #fmt("File not found: %s", script));
-                    js::ext::rust_exit_now(0);
+                    fail
                 }
             }
         }
         io_cb(level, tag, timeout, _p, buf) {
-            log(core::error, ("io_cb", myid, level, tag, timeout, buf));
             js::begin_request(*cx);
             js::set_data_property(cx, global, buf);
             let code = #fmt("try { _resume(%u, _data, %u); } catch (e) { print(e + '\\n' + e.stack); }; _data = undefined;", level as uint, tag as uint);
@@ -156,17 +154,21 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
     run_script(cx, global, "dom.js");
     run_script(cx, global, "layout.js");
 
-    let checkwait = js::compile_script(
-        cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0) jsrust_exit();"), "io", 0u),
+    let checkwait = js::compile_script(cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0) jsrust_exit();"), "io", 0u),
         loadurl = js::compile_script(cx, global, str::bytes("try { _resume(9, _data, 0) } catch (e) { print(e + '\\n' + e.stack) } _data = undefined;"), "io", 0u);
 
     if str::len(myurl) > 4u && (
         str::eq(str::slice(myurl, 0u, 4u), "http") ||
         str::eq(str::slice(myurl, 0u, 4u), "file")) {
-            log(core::error, "loadurl");
         send(msg_chan, load_url(myurl));
     } else {
-        send(msg_chan, load_script(myurl));
+        let strlen = str::len(myurl);
+        if str::eq(str::slice(myurl, strlen - 5u, strlen), ".html") {
+            // hack: file urls aren't exactly the right format yet
+            send(msg_chan, load_url(#fmt("file:%s", myurl)))
+        } else {
+            send(msg_chan, load_script(myurl));
+        }
     }
 
     let exit = false,
@@ -182,7 +184,7 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
                 }
             }
             either::right(msg) {
-                on_ctl_msg(myid, cx, global, msg, checkwait, loadurl);
+                on_ctl_msg(cx, global, msg, checkwait, loadurl);
             }
         }
     }
@@ -190,25 +192,23 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
 
 
 fn main(args : [str]) {
-    let maxbytes = 32u32 * 1024u32 * 1024u32;
+    let maxbytes = 32u32 * 1024u32 * 1024u32,
+        map = treemap::init();
 
-    let stdoutport = port::<out_msg>();
-    let stdoutchan = chan(stdoutport);
+    let stdoutport = port::<out_msg>(),
+        stdoutchan = chan(stdoutport),
+        sendchanport = port::<(int, chan<ctl_msg>)>(),
+        sendchanchan = chan(sendchanport);
 
-    let sendchanport = port::<(int, chan<ctl_msg>)>();
-    let sendchanchan = chan(sendchanport);
-
-    let map = treemap::init();
-
-    let argc = vec::len(args);
-    let argv = if argc == 1u {
-        ["test.js"]
-    } else {
-        vec::slice(args, 1u, argc)
-    };
+    let argc = vec::len(args),
+        argv = if argc == 1u {
+            ["test.js"]
+        } else {
+            vec::slice(args, 1u, argc)
+        };
 
     let left = 0,
-    actorid = 0;
+        actorid = 0;
 
     for x in argv {
         left += 1;
