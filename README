@@ -1,0 +1,20 @@
+rust-spidermonkey provides rust bindings to libmozjs, also known as the SpiderMonkey JavaScript interpreter. To build the library for use in rust programs, type "make".
+
+To build the test program, which takes command line arguments and either executes them as scripts (each in it's own rust task) or loads them into dom.js if they are html files, type "make test".
+
+./test
+
+  Runs the test.js script, which happens to load the foo.html file as well.
+
+./test foo.html
+
+  Just load and parse an html file with dom.js.
+
+./test foo.js
+
+  Just run a script with a context which includes a 'print' function as well as a "document" and "window" implementation provided by dom.js.
+
+./test foo.html foo.js [...]
+
+  Start up a number of independent JavaScript environments, each of which have their own Rust task, and parse or execute them, as appropriate.
+
