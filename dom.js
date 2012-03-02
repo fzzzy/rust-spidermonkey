@@ -14181,8 +14181,6 @@ defineLazyProperty(impl, "HTMLScriptElement", function() {
 
                     var script = this;
                     var xhr = new XMLHttpRequest();
-                    xhr.open("GET", url);
-                    xhr.send();
 
                     // Web workers support this handler but not the old
                     // onreadystatechange handler
@@ -14215,6 +14213,9 @@ defineLazyProperty(impl, "HTMLScriptElement", function() {
                             script.ownerDocument._parser.resume();
                         }
                     }
+
+                    xhr.open("GET", url);
+                    xhr.send();
                 }
             }
             else {
@@ -27668,8 +27669,7 @@ Location.prototype = Object.create(URLDecompositionAttributes.prototype, {
         // This is just something hacked together.
         // The real algorithm is: http://www.whatwg.org/specs/web-apps/current-work/multipage/history.html#navigate
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", newurl);
-        xhr.send();
+
         xhr.onload = function() {
             var olddoc = self._window.document;
             var parser = new HTMLParser(newurl);
@@ -27689,6 +27689,9 @@ Location.prototype = Object.create(URLDecompositionAttributes.prototype, {
             // And parse the new file
             parser.parse(xhr.responseText, true);
         };
+
+        xhr.open("GET", newurl);
+        xhr.send();
 
     }),
 

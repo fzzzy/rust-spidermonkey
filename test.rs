@@ -14,7 +14,7 @@ enum out_msg {
     stderr(str),
     spawn(str, str),
     cast(str, str),
-    exitproc
+    exitproc,
 }
 
 
@@ -105,6 +105,7 @@ fn on_js_msg(myid : int, out : chan<out_msg>, m : js::jsrust_message, childid : 
 fn on_ctl_msg(myid : int, cx : js::context, global : js::object, msg : ctl_msg, checkwait : js::script, loadurl : js::script) {
     alt msg {
         load_url(x) {
+            log(core::error, x);
             js::set_data_property(cx, global, x);
             js::execute_script(cx, global, loadurl);
         }
@@ -153,12 +154,16 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
 
     run_script(cx, global, "xmlhttprequest.js");
     run_script(cx, global, "dom.js");
+    run_script(cx, global, "layout.js");
 
     let checkwait = js::compile_script(
         cx, global, str::bytes("if (XMLHttpRequest.requests_outstanding === 0) jsrust_exit();"), "io", 0u),
-        loadurl = js::compile_script(cx, global, str::bytes("try { _resume(5, _data, 0) } catch (e) { print(e + '\\n' + e.stack) } _data = undefined;"), "io", 0u);
+        loadurl = js::compile_script(cx, global, str::bytes("try { _resume(9, _data, 0) } catch (e) { print(e + '\\n' + e.stack) } _data = undefined;"), "io", 0u);
 
-    if str::len(myurl) > 4u && str::eq(str::slice(myurl, 0u, 4u), "http") {
+    if str::len(myurl) > 4u && (
+        str::eq(str::slice(myurl, 0u, 4u), "http") ||
+        str::eq(str::slice(myurl, 0u, 4u), "file")) {
+            log(core::error, "loadurl");
         send(msg_chan, load_url(myurl));
     } else {
         send(msg_chan, load_script(myurl));

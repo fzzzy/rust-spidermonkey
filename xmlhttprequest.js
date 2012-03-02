@@ -77,6 +77,14 @@ XMLHttpRequest.prototype = {
             port = 80;
         } else if (parts.scheme === 'https') {
             port = 443;
+        } else if (parts.scheme === 'file') {
+            this.status = 0;
+            this.statusText = "";
+            // Hack: Work around dom.js giving us file:/foo/bar urls
+            this.responseText = jsrust_read(url.slice(5));
+            this.readyState = XMLHttpRequest.prototype.DONE;
+            this.onreadystatechange();
+            return;
         } else {
             throw new Error("Unsupported scheme: " + parts.scheme);
         }
@@ -114,13 +122,13 @@ XMLHttpRequest.prototype = {
         if (data) {
             this._request += data;
         }
-		if (this.connected) {
-	        jsrust_send(this._fd, this._request);
-	        jsrust_recv(this._fd, 32768);
-			this._request = "";
-		} else {
-	        //jsrust_send(this._fd, "");
-		}
+        if (this.connected) {
+            jsrust_send(this._fd, this._request);
+            jsrust_recv(this._fd, 32768);
+            this._request = "";
+        } else {
+            //jsrust_send(this._fd, "");
+        }
     },
     abort: function abort() {
         // TODO ???
@@ -139,6 +147,7 @@ XMLHttpRequest.prototype = {
 
 global._resume = function _resume(what, data, req_id) {
     //print("Handling request. Total:", XMLHttpRequest.requests_outstanding);
+    //print("_resume", what, data, req_id);
     var xhr = _xhrs[req_id] || null;
     if (what === CONN) {
         xhr.readyState = XMLHttpRequest.prototype.OPENED;
@@ -146,7 +155,7 @@ global._resume = function _resume(what, data, req_id) {
         if (xhr._request.length) {
             jsrust_send(xhr._fd, xhr._request);
         }
-		this.connected = true;
+        this.connected = true;
     } else if (what === SEND) {
         jsrust_recv(xhr._fd, 32768);
         // TODO need to get number of bytes actually written back into js

@@ -4,6 +4,7 @@
 #include <cstring>
 #include <stdint.h>
 #include <pthread.h>
+#include <errno.h>
 
 /*
  * Rust API declarations.
@@ -240,8 +241,84 @@ static JSBool JSRust_Print(JSContext *cx, uintN argc, jsval *vp) {
     return JS_TRUE;
 }
 
+static JSString *
+FileAsString(JSContext *cx, const char *pathname)
+{
+    FILE *file;
+    JSString *str = NULL;
+    size_t len, cc;
+    char *buf;
+
+    file = fopen(pathname, "rb");
+    if (!file) {
+        JS_ReportError(cx, "can't open %s: %s", pathname, strerror(errno));
+        return NULL;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        JS_ReportError(cx, "can't seek end of %s", pathname);
+    } else {
+        len = ftell(file);
+        if (fseek(file, 0, SEEK_SET) != 0) {
+            JS_ReportError(cx, "can't seek start of %s", pathname);
+        } else {
+            buf = (char*) JS_malloc(cx, len + 1);
+            if (buf) {
+                cc = fread(buf, 1, len, file);
+                if (cc != len) {
+                    JS_ReportError(cx, "can't read %s: %s", pathname,
+                                   (ptrdiff_t(cc) < 0) ? strerror(errno) : "short read");
+                } else {
+                    jschar *ucbuf;
+                    size_t uclen;
+
+                    len = (size_t)cc;
+
+                    if (!JS_DecodeUTF8(cx, buf, len, NULL, &uclen)) {
+                        JS_ReportError(cx, "Invalid UTF-8 in file '%s'", pathname);
+                        return NULL;
+                    }
+
+                    ucbuf = (jschar*)malloc(uclen * sizeof(jschar));
+                    JS_DecodeUTF8(cx, buf, len, ucbuf, &uclen);
+                    str = JS_NewUCStringCopyN(cx, ucbuf, uclen);
+                    free(ucbuf);
+                }
+                JS_free(cx, buf);
+            }
+        }
+    }
+    fclose(file);
+
+    return str;
+}
+
+static JSBool
+JSRust_Read(JSContext *cx, uintN argc, jsval *vp)
+{
+    JSString *str;
+
+    if (!argc)
+        return JS_FALSE;
+
+    str = JS_ValueToString(cx, JS_ARGV(cx, vp)[0]);
+    if (!str)
+        return JS_FALSE;
+    JSAutoByteString filename(cx, str);
+    if (!filename)
+        return JS_FALSE;
+
+    const char *pathname = filename.ptr();
+
+    if (!(str = FileAsString(cx, pathname)))
+        return JS_FALSE;
+    *vp = STRING_TO_JSVAL(str);
+    return JS_TRUE;
+}
+
 static JSFunctionSpec global_functions[] = {
     JS_FN("print", JSRust_Print, 0, 0),
+    JS_FN("jsrust_read", JSRust_Read, 0, 0),
     JS_FS_END
 };
 
