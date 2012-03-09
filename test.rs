@@ -196,7 +196,6 @@ fn on_layout_msg(doc: @document, msg_j : json::json) {
             alt doc.nodes[parent] {
                 element(x) {
                     *x.child = vec::filter(copy *x.child, {|id|
-                        log(error, ("asdf", id, target));
                         id != target
                     });
                     std::io::println(#fmt("remove %? %?", target, x.child));
@@ -255,16 +254,13 @@ fn on_layout_msg(doc: @document, msg_j : json::json) {
             } else {
                 doc.nodes[nid - 1u] = elt;
             }
-            log(error, doc.nodes);
 
             alt parent {
                 element(e) {
-                    log(error, #fmt("slice %? %? %? %?", e, *e.child, index, vec::len(*e.child)));
                     *e.child = (
                         vec::slice(*e.child, 0u, index)
                         + [nid - 1u]
                         + vec::slice(*e.child, index, vec::len(*e.child)));
-                    log(error, #fmt("%? %?", e, *e.child));
                 }
                 nonode { 
                     
@@ -343,6 +339,7 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
             }
         }
     }
+    std::io::println(#fmt("%?", doc.nodes));
 }
 
 
