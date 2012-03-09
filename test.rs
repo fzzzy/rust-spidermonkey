@@ -198,11 +198,10 @@ fn on_layout_msg(doc: @document, msg_j : json::json) {
                     *x.child = vec::filter(copy *x.child, {|id|
                         id != target
                     });
-                    std::io::println(#fmt("remove %? %?", target, x.child));
+                    std::io::println(#fmt("remove %?", target));
                 }
                 _ { fail }
             }
-            std::io::println(#fmt("nodes %? %?", target, doc.nodes));
         }
         5. { // MOVE
             std::io::println(#fmt("move %?", target));
