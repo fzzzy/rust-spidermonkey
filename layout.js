@@ -1,3 +1,4 @@
 document._setMutationHandler(function(mut) {
-    print(JSON.stringify(mut));
+    // 10: layout event
+    postMessage(10, JSON.stringify(mut));
 });

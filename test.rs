@@ -3,10 +3,33 @@ use spidermonkey;
 import spidermonkey::js;
 
 use std;
-import std::{ io, os, treemap, uv };
+import std::{ io, json, map, os, treemap, uv };
 
 import ctypes::size_t;
 import comm::{ port, chan, recv, send, select2 };
+import core::error;
+
+
+type element = {
+    mut tag: str,
+    mut attr: option::t<treemap::treemap<str, str>>,
+    mut parent: uint,
+    mut child: @mut[uint]
+};
+
+
+enum node {
+    doctype(str, str, str, uint),
+    procinst(str, uint),
+    text(str, uint),
+    element(element),
+    nonode,
+}
+
+
+type document = {
+    mut nodes: [mut node],
+};
 
 
 enum out_msg {
@@ -59,17 +82,13 @@ fn run_script(cx : js::context, global : js::object, filename : str) {
 }
 
 
-fn on_js_msg(myid : int, out : chan<out_msg>, m : js::jsrust_message, childid : int) -> int {
+fn on_js_msg(myid : int, out : chan<out_msg>, m : js::jsrust_message, childid : int, doc : @document) -> int {
     // messages from javascript
     alt m.level{
-        0u32 { // CONNECT
-        }
-        1u32 { // SEND
-        }
-        2u32 { // RECV
-        }
-        3u32 { // CLOSE
-        }
+        0u32 { } // CONNECT
+        1u32 { } // SEND
+        2u32 { } // RECV
+        3u32 { } // CLOSE
         4u32 { // stdout
             send(out, stdout(
                 #fmt("[Actor %d] %s",
@@ -86,17 +105,19 @@ fn on_js_msg(myid : int, out : chan<out_msg>, m : js::jsrust_message, childid : 
                 m.message));
             ret childid + 1;
         }
-        7u32 { // cast
+        7u32 { } // cast
+        8u32 { } // SETTIMEOUT
+        9u32 { ret -1; } // exit
+        10u32 { // layout event
+            //std::io::println(m.message);
+            alt json::from_str(m.message) {
+                result::ok(v) {
+                    on_layout_msg(doc, v);
+                }
+                _ { fail }
+            }
         }
-        8u32 { // SETTIMEOUT
-        }
-        9u32 { // exit
-            ret -1;
-        }
-        _ {
-            log(core::error, "...");
-            fail "unexpected case"
-        }
+        _ { fail "unexpected case" }
     }
     ret childid;
 }
@@ -121,7 +142,7 @@ fn on_ctl_msg(cx : js::context, global : js::object, msg : ctl_msg, checkwait : 
                     js::execute_script(cx, global, checkwait);
                 }
                 _ {
-                    log(core::error, #fmt("File not found: %s", script));
+                    log(error, #fmt("File not found: %s", script));
                     fail
                 }
             }
@@ -135,6 +156,126 @@ fn on_ctl_msg(cx : js::context, global : js::object, msg : ctl_msg, checkwait : 
             js::end_request(*cx);
         }
         _ { fail "unexpected case" }
+    }
+}
+
+fn on_layout_msg(doc: @document, msg_j : json::json) {
+    let msg = alt msg_j {
+            json::dict(x) { x }
+            _ { fail }
+        },
+        typ = alt msg.get("type") {
+            json::num(x) { x }
+            _ { fail }
+        },
+        target = alt msg.get("target") {
+            json::num(x) { x as uint }
+            _ { fail }
+        };
+
+    alt typ {
+        1. { // MUTATE VALUE
+            let data = msg.get("data");
+            std::io::println(#fmt("mutate %? %?", target, data));
+        }
+        2. { // MUTATE ATTR
+            std::io::println(#fmt("mutate attr %?", target));
+        }
+        3. { // REMOVE ATTR
+            std::io::println(#fmt("remove attr %?", target));
+        }
+        4. { // REMOVE
+            let parent = alt doc.nodes[target - 1u] {
+                doctype(x, y, z, p) { p }
+                procinst(x, p) { p }
+                text(x, p) { p }
+                element(x) { x.parent }
+                _ { fail }
+            };
+            doc.nodes[target - 1u] = nonode;
+            alt doc.nodes[parent] {
+                element(x) {
+                    *x.child = vec::filter(copy *x.child, {|id|
+                        log(error, ("asdf", id, target));
+                        id != target
+                    });
+                    std::io::println(#fmt("remove %? %?", target, x.child));
+                }
+                _ { fail }
+            }
+            std::io::println(#fmt("nodes %? %?", target, doc.nodes));
+        }
+        5. { // MOVE
+            std::io::println(#fmt("move %?", target));
+        }
+        6. { // INSERT
+            let nid = alt msg.get("nid") {
+                    json::num(x) { x as uint }
+                    _ { fail }
+                },
+                index = alt msg.get("index") {
+                    json::num(x) { x as uint }
+                    _ { fail }
+                },
+                child = msg.get("child"),
+                parent = doc.nodes[target - 1u];
+
+            std::io::println(#fmt(
+                "insert %? into %? at index %?: %s",
+                nid, target, index, json::to_str(child)));
+
+            let elt = alt child {
+                json::string(s) { text(s, target) }
+                json::dict(m) { 
+                    alt m.find("html") {
+                        option::some(json::string(tn)) {
+                            element({
+                                mut tag: tn,
+                                mut attr: option::none,
+                                mut parent: target,
+                                mut child: @mut[]})
+                        }
+                        _ {
+                            alt m.find("doctype") {
+                                option::some(json::string(dt)) {
+                                    doctype(dt, "", "", target)
+                                }
+                                _ {
+                                    fail
+                                }
+                            }
+                        }
+                    }
+                }
+                _ { fail }
+            };
+
+            if nid - 1u == vec::len(doc.nodes) {
+                doc.nodes += [mut elt];
+            } else {
+                doc.nodes[nid - 1u] = elt;
+            }
+            log(error, doc.nodes);
+
+            alt parent {
+                element(e) {
+                    log(error, #fmt("slice %? %? %? %?", e, *e.child, index, vec::len(*e.child)));
+                    *e.child = (
+                        vec::slice(*e.child, 0u, index)
+                        + [nid - 1u]
+                        + vec::slice(*e.child, index, vec::len(*e.child)));
+                    log(error, #fmt("%? %?", e, *e.child));
+                }
+                nonode { 
+                    
+                }
+                _ { log(error, parent); fail }
+            }
+
+        }
+        _y {
+            log(error, _y);
+        }
     }
 }
 
@@ -172,12 +313,26 @@ fn run_actor(myid : int, myurl : str, maxbytes : u32, out : chan<out_msg>, sendc
     }
 
     let exit = false,
-    childid = 0;
+        childid = 0,
+        doc : @document = @{
+            mut nodes: [
+                mut element({
+                    mut tag: "Document",
+                    mut attr: option::none,
+                    mut parent: 0u,
+                    mut child: @mut[2u, 3u]}),
+                doctype("", "", "", 0u),
+                element({
+                    mut tag: "html",
+                    mut attr: option::none,
+                    mut parent: 0u,
+                    mut child: @mut[]})]};
+
 
     while !exit {
         alt select2(js_port, msg_port) {
             either::left(m) {
-                childid = on_js_msg(myid, out, m, childid);
+                childid = on_js_msg(myid, out, m, childid, doc);
                 if childid == -1 {
                     send(out, exitproc);
                     exit = true;
@@ -225,10 +380,10 @@ fn main(args : [str]) {
 
     while true {
         alt recv(stdoutport) {
-            stdout(x) { log(core::error, x); }
-            stderr(x) { log(core::error, x); }
+            stdout(x) { std::io::println(x); }
+            stderr(x) { log(error, x); }
             spawn(id, src) {
-                log(core::error, ("spawn", id, src));
+                log(error, ("spawn", id, src));
                 actorid = actorid + 1;
                 left = left + 1;
                 task::spawn {||

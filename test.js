@@ -2,7 +2,8 @@
 print("Hello, world!");
 print(document);
 document._setMutationHandler(function(mut) {
-    print(JSON.stringify(mut));
+    var thestr = JSON.stringify(mut) + ' ';
+    postMessage(10, thestr);
 });
 
 // Hack. File urls are not correctly parsed right now,

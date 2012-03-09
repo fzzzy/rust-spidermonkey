@@ -344,12 +344,12 @@ JSBool JSRust_PostMessage(JSContext *cx, uintN argc, jsval *vp) {
         reinterpret_cast<jsrust_context_priv *>(priv_p);
 
     uint32_t what = 0;
-    JSString *thestr = JS_ValueToSource(cx, JS_ARGV(cx, vp)[1]);
+    JSString *thestr;
+    JS_ConvertArguments(cx,
+        2, JS_ARGV(cx, vp), "uS", &what, &thestr);
+
     const char *code = JS_EncodeString(cx, thestr);
     rust_str *message = rust_str::make(code);
-
-    JS_ConvertArguments(cx,
-        1, JS_ARGV(cx, vp), "u", &what);
 
     jsrust_send_msg(cx, (enum IO_OP)what, message, 0, 0);
 
